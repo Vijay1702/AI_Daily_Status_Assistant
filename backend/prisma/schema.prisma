@@ -1,0 +1,118 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - stores user profile and preferences
+model User {
+  id              String    @id @default(cuid())
+  name            String
+  masterNo        String    @unique @map("master_no")
+  email           String    @unique
+  passwordHash    String    @map("password_hash")
+  dailyHours      Int       @default(8) @map("daily_hours")
+  preferredModel  String    @default("llama3") @map("preferred_model")
+  reminderTime    String    @default("18:00") @map("reminder_time")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  chatSessions    ChatSession[]
+  dailyStatuses   DailyStatus[]
+  monthlyReports  MonthlyReport[]
+  reminderLogs    ReminderLog[]
+
+  @@map("users")
+}
+
+// Chat sessions - stores conversation sessions
+model ChatSession {
+  id            String    @id @default(cuid())
+  userId        String    @map("user_id")
+  sessionTitle  String    @map("session_title")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages      Message[]
+
+  @@index([userId])
+  @@map("chat_sessions")
+}
+
+// Messages - stores chat messages
+model Message {
+  id          String    @id @default(cuid())
+  sessionId   String    @map("session_id")
+  role        String    // "user" or "assistant"
+  content     String    @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  session     ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("messages")
+}
+
+// Daily status - stores processed timesheet entries
+model DailyStatus {
+  id            String    @id @default(cuid())
+  userId        String    @map("user_id")
+  statusText    String    @db.Text @map("status_text")
+  aiSummary     String    @db.Text @map("ai_summary")
+  hours         Int       @default(8)
+  workDate      DateTime  @map("work_date") @db.Date
+  workingFlag   Boolean   @default(true) @map("working_flag")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workDate])
+  @@index([userId])
+  @@index([workDate])
+  @@map("daily_statuses")
+}
+
+// Monthly reports - stores generated Excel reports
+model MonthlyReport {
+  id            String    @id @default(cuid())
+  userId        String    @map("user_id")
+  month         Int
+  year          Int
+  filePath      String    @map("file_path") @db.Text
+  emailSent     Boolean   @default(false) @map("email_sent")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, month, year])
+  @@index([userId])
+  @@map("monthly_reports")
+}
+
+// Reminder logs - tracks reminder emails sent
+model ReminderLog {
+  id            String    @id @default(cuid())
+  userId        String    @map("user_id")
+  reminderDate  DateTime  @map("reminder_date") @db.Date
+  status        String    // "sent" or "skipped"
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, reminderDate])
+  @@index([userId])
+  @@map("reminder_logs")
+}

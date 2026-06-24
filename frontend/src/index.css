@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-gray-50;
+}
+
+/* Chat message styles */
+.message-container {
+  @apply flex flex-col space-y-2;
+}
+
+.message-user {
+  @apply flex justify-end;
+}
+
+.message-user .message-bubble {
+  @apply bg-blue-600 text-white rounded-lg rounded-tr-none py-2 px-4 max-w-xs lg:max-w-md break-words;
+}
+
+.message-assistant {
+  @apply flex justify-start;
+}
+
+.message-assistant .message-bubble {
+  @apply bg-gray-200 text-gray-900 rounded-lg rounded-tl-none py-2 px-4 max-w-xs lg:max-w-md break-words;
+}
+
+/* Loading animation */
+@keyframes pulse-fade {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-fade {
+  animation: pulse-fade 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Spinner */
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Smooth transitions */
+.transition-smooth {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
