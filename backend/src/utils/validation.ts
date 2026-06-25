@@ -54,8 +54,8 @@ export const updateTimesheetSchema = z.object({
 
 // Pagination schema
 export const paginationSchema = z.object({
-  page: z.string().transform(Number).pipe(z.number().int().min(1)).default('1'),
-  limit: z.string().transform(Number).pipe(z.number().int().min(1).max(500)).default('10'),
+  page: z.union([z.string(), z.number()]).transform((val) => Number(val)).pipe(z.number().int().min(1)).default(1),
+  limit: z.union([z.string(), z.number()]).transform((val) => Number(val)).pipe(z.number().int().min(1).max(500)).default(10),
 });
 
 // Query schemas

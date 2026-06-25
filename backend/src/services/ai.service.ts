@@ -1,3 +1,5 @@
+import axios from 'axios';
+import { env } from '../utils/env.js';
 import logger from '../utils/logger.js';
 
 export interface StandupData {
@@ -44,27 +46,72 @@ const PROPER_NOUNS: [RegExp, string][] = [
   [/\bazure\b/gi,         'Azure'],
   [/\bgcp\b/gi,           'GCP'],
   [/\bdocker\b/gi,        'Docker'],
+  [/\brhb\b/gi,           'RHB'],
+  [/\brhbpay\b/gi,        'RHBPay'],
 ];
 
 /**
- * Fast Rule-Based Standup Assistant
- * Collects work tasks (multiple) + hours. Instant, no LLM.
+ * Fast Rule-Based Standup Assistant with Ollama Integration
+ * Collects work tasks (multiple) + hours. Rephrases professionally using Ollama if running.
  *
  * Stages:
  *   GREETING → WAITING_FOR_WORK → WAITING_FOR_MORE_TASKS → WAITING_FOR_HOURS → COMPLETED
  */
 export class AIService {
+  private baseURL: string = env.OLLAMA_BASE_URL;
+  private model: string = env.OLLAMA_MODEL;
+
   // Kept for interface compatibility
-  setModel(_model: string): void {}
+  setModel(model: string): void {
+    if (['llama3', 'qwen3', 'mistral'].includes(model)) {
+      this.model = model;
+    }
+  }
 
   /**
    * Rephrase a raw user task into professional past-tense language.
    * e.g. "design figma for RHBPay" → "Designed Figma screens for the RHBPay project"
    */
-  private rephraseWork(raw: string): string {
+  private async rephraseWork(raw: string): Promise<string> {
     const text = raw.trim().replace(/^[•\-*]\s*/, ''); // strip any leading bullet
     if (!text) return text;
 
+    try {
+      logger.info(`Attempting Ollama rephrase with model: ${this.model}`);
+      const prompt = `You are a professional daily standup summary assistant. 
+Rephrase the following raw daily work status description into a single concise, professional, past-tense bullet point (e.g., "Implemented login validation" or "Optimized database queries"). 
+Do not include any pleasantries, intro, conversational filler, or multiple sentences. Just return the rephrased status line.
+
+Raw status: "${text}"`;
+
+      const response = await axios.post(
+        `${this.baseURL}/api/generate`,
+        {
+          model: this.model,
+          prompt,
+          stream: false,
+        },
+        {
+          timeout: 4000, // Fast fallback if Ollama is not responding/not installed
+        }
+      );
+
+      const generated = response.data.response.trim();
+      if (generated && generated.length > 3) {
+        // Clean leading bullets or quotes if any
+        let cleaned = generated.replace(/^[•\-*"\s]+/, '').replace(/"\s*$/, '');
+        // Apply proper-noun capitalisation
+        for (const [pattern, replacement] of PROPER_NOUNS) {
+          cleaned = cleaned.replace(pattern, replacement);
+        }
+        // Ensure sentence-case
+        return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+      }
+    } catch (error) {
+      logger.warn('Ollama rephrasing failed or timed out. Falling back to rule-based rephraser.', error);
+    }
+
+    // Rule-based fallback
     const verbRules: [RegExp, string][] = [
       [/^design(ed|ing)?\s+/i,            'Designed '],
       [/^develop(ed|ing)?\s+/i,           'Developed '],
@@ -124,7 +171,6 @@ export class AIService {
       }
     }
 
-    // No verb found — treat as noun phrase
     if (!matched) {
       rephrased = `Worked on ${text}`;
     }
@@ -134,12 +180,11 @@ export class AIService {
       rephrased = rephrased.replace(pattern, replacement);
     }
 
-    // Ensure sentence-case
     return rephrased.charAt(0).toUpperCase() + rephrased.slice(1);
   }
 
   /**
-   * Get instant response based on current stage — no network calls
+   * Get response based on current stage
    */
   async getTeamLeadResponse(
     userMessage: string,
@@ -169,7 +214,7 @@ export class AIService {
             extractedData: {},
           };
         }
-        const professional = this.rephraseWork(msg);
+        const professional = await this.rephraseWork(msg);
         return {
           response: `Got it! ✅ Do you want to add more tasks for today? (yes / no)`,
           nextStage: 'WAITING_FOR_MORE_TASKS',
@@ -192,7 +237,7 @@ export class AIService {
 
         // User typed a task directly
         if (!isNo && msg.length > 3 && !isYes) {
-          const professional = this.rephraseWork(msg);
+          const professional = await this.rephraseWork(msg);
           const existingWork = sessionData.work || '';
           const updatedWork = existingWork ? `${existingWork}\n• ${professional}` : `• ${professional}`;
           return {
@@ -219,7 +264,7 @@ export class AIService {
             extractedData: {},
           };
         }
-        const professional = this.rephraseWork(msg);
+        const professional = await this.rephraseWork(msg);
         const existingWork = sessionData.work || '';
         const updatedWork = existingWork ? `${existingWork}\n• ${professional}` : `• ${professional}`;
 
@@ -291,7 +336,7 @@ export class AIService {
   }
 
   /**
-   * Always available — no external dependency
+   * Always available
    */
   async checkStatus(): Promise<boolean> {
     return true;

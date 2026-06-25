@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { apiClient } from '@/services/api';
-import { Send, Sparkles, MessageCircle, Loader } from 'lucide-react';
+import { Send, Sparkles, MessageCircle, Loader, RotateCcw } from 'lucide-react';
 import Spinner from '@/components/ui/Spinner';
 import Textarea from '@/components/ui/Textarea';
 import clsx from 'clsx';
@@ -66,7 +66,7 @@ export default function ChatPage() {
     try {
       const response = await apiClient.sendChatMessage(userMessage);
       if (response.data.success && response.data.data) {
-        const { stage, aiResponse, currentData } = response.data.data;
+        const { aiResponse } = response.data.data;
         
         // Add user message and AI response to conversation
         const userMsg = {
@@ -84,34 +84,6 @@ export default function ChatPage() {
         };
 
         setMessages((prev) => [...prev, userMsg, aiMsg]);
-
-        // Show summary when standup is completed
-        if (stage === 'COMPLETED') {
-          const summary = `
-📋 **Daily Standup Summary**
-
-**Work Completed:**
-${currentData.work || 'Not provided'}
-
-**Hours Worked:** ${currentData.hours || 'Not specified'}
-
-**Blockers:**
-${currentData.blockers || 'None'}
-
-**Tomorrow's Focus:**
-${currentData.tomorrowPlan || 'Not specified'}
-
-✅ Your timesheet has been recorded!`;
-
-          const summaryMsg = {
-            id: Math.random().toString(),
-            role: 'assistant' as const,
-            content: summary,
-            createdAt: new Date().toISOString(),
-          };
-
-          setMessages((prev) => [...prev, summaryMsg]);
-        }
       }
     } catch (error: any) {
       console.error('Error sending message:', error);
@@ -135,18 +107,40 @@ ${currentData.tomorrowPlan || 'Not specified'}
   return (
     <div className="flex flex-col h-full relative bg-transparent">
       {/* Header */}
-      <div className="border-b border-white/5 px-lg py-md flex items-center gap-md z-10 sticky top-0 backdrop-blur-xl bg-[#020617]/60">
-        <div className="p-sm bg-gradient-to-br from-primary-500 to-indigo-600 rounded-full shadow-lg shadow-primary-500/20">
-          <MessageCircle className="text-white" size={20} />
+      <div className="border-b border-white/5 px-lg py-md flex items-center justify-between z-10 sticky top-0 backdrop-blur-xl bg-[#020617]/60">
+        <div className="flex items-center gap-md">
+          <div className="p-sm bg-gradient-to-br from-primary-500 to-indigo-600 rounded-full shadow-lg shadow-primary-500/20">
+            <MessageCircle className="text-white" size={20} />
+          </div>
+          <div>
+            <h2 className="text-title-md font-semibold text-white font-inter tracking-tight">
+              Daily AI Chat
+            </h2>
+            <p className="text-body-sm text-white/50">
+              {messages.length > 0 ? `${messages.length} messages today` : 'Start your first update'}
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-title-md font-semibold text-white font-inter tracking-tight">
-            Daily AI Chat
-          </h2>
-          <p className="text-body-sm text-white/50">
-            {messages.length > 0 ? `${messages.length} messages today` : 'Start your first update'}
-          </p>
-        </div>
+
+        {messages.length > 0 && (
+          <button
+            onClick={async () => {
+              if (window.confirm("Are you sure you want to reset today's standup session and start over? This will let you re-record your status.")) {
+                try {
+                  await apiClient.resetChatSession();
+                  setMessages([]);
+                } catch (err) {
+                  console.error("Failed to reset session:", err);
+                }
+              }
+            }}
+            className="flex items-center gap-xs px-md py-sm bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 text-white/85 hover:text-white text-body-sm font-medium rounded-xl transition-all duration-200"
+            title="Reset standup session for today"
+          >
+            <RotateCcw size={14} />
+            Start Over
+          </button>
+        )}
       </div>
 
       {/* Messages container */}

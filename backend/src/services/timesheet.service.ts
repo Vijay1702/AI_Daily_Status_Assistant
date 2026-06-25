@@ -100,7 +100,7 @@ export class TimesheetService {
   }> {
     const skip = (page - 1) * limit;
     // We need to fetch all entries, ordered by date desc, including user info
-    const prisma = (await import('../utils/prisma.js')).prisma;
+    const prisma = (await import('../utils/db.js')).prisma;
     
     const [entries, total] = await Promise.all([
       prisma.dailyStatus.findMany({
@@ -117,7 +117,7 @@ export class TimesheetService {
     ]);
 
     return {
-      items: entries.map((e) => ({ ...this.formatEntry(e), user: e.user })),
+      items: entries.map((e: any) => ({ ...this.formatEntry(e), user: e.user })),
       total,
       page,
       limit,

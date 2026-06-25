@@ -97,15 +97,6 @@ export class ChatController {
 
           entryCreated = true;
           logger.info(`Timesheet created for ${user.email} - Date: ${today.toISOString()}`);
-          
-          // Save summary to chat history
-          const summary = `📋 **Daily Standup Summary**\n\n**Work Completed:**\n${updatedSession.work || 'Not provided'}\n\n**Hours Worked:** ${updatedSession.hours || 'Not specified'}h\n\n✅ Your timesheet has been recorded!`;
-
-          await messageRepository.create({
-            sessionId: chatSession.id,
-            role: 'assistant',
-            content: summary
-          });
         }
       } catch (error: any) {
         if (error.code === 'P2002') {
@@ -152,7 +143,7 @@ export class ChatController {
     }
 
     // Get chat history
-    let history = [];
+    let history: any[] = [];
     const chatSession = await chatSessionRepository.findTodaySession(userId);
     if (chatSession) {
       history = await messageRepository.findBySessionId(chatSession.id);
