@@ -1,179 +1,228 @@
 import { Request, Response } from 'express';
-import { chatMessageSchema, createChatSessionSchema, paginationSchema } from '../utils/validation.js';
-import { chatSessionRepository, messageRepository } from '../repositories/chatSession.repository.js';
-import { timesheetService } from '../services/timesheet.service.js';
+import { sendChatMessageSchema } from '../utils/validation.js';
+import { standupSessionRepository } from '../repositories/standupSession.repository.js';
 import { aiService } from '../services/ai.service.js';
 import { userRepository } from '../repositories/user.repository.js';
+import { dailyStatusRepository } from '../repositories/dailyStatus.repository.js';
+import { chatSessionRepository, messageRepository } from '../repositories/chatSession.repository.js';
 import { asyncHandler } from '../middlewares/errorHandler.js';
 import { NotFoundError } from '../utils/errors.js';
 import logger from '../utils/logger.js';
 
 export class ChatController {
-  createSession = asyncHandler(async (req: Request, res: Response) => {
-    const userId = req.userId!;
-    const input = createChatSessionSchema.parse(req.body);
-
-    const session = await chatSessionRepository.create({
-      userId,
-      sessionTitle: input.sessionTitle,
-    });
-
-    res.status(201).json({
-      success: true,
-      data: session,
-    });
-  });
-
+  /**
+   * Send message in standup conversation
+   * Maintains only current session state, no chat history
+   */
   sendMessage = asyncHandler(async (req: Request, res: Response) => {
     const userId = req.userId!;
-    const { content, sessionId } = chatMessageSchema.parse(req.body);
+    const { content } = sendChatMessageSchema.parse(req.body);
 
-    let session;
+    // Get or create today's standup session
+    const session = await standupSessionRepository.getOrCreateToday(userId);
 
-    // Create session if not provided
-    if (!sessionId) {
-      session = await chatSessionRepository.create({
-        userId,
-        sessionTitle: `Chat - ${new Date().toLocaleDateString()}`,
-      });
-    } else {
-      session = await chatSessionRepository.findById(sessionId);
-      if (!session || session.userId !== userId) {
-        throw new NotFoundError('Chat session not found');
-      }
-    }
-
-    // Save user message
-    const userMessage = await messageRepository.create({
-      sessionId: session.id,
-      role: 'user',
-      content,
-    });
-
-    // Get user for AI configuration
+    // Get user for personalization
     const user = await userRepository.findById(userId);
     if (!user) {
       throw new NotFoundError('User not found');
     }
 
+    // Get or create today's ChatSession for message history
+    let chatSession = await chatSessionRepository.findTodaySession(userId);
+    if (!chatSession) {
+      chatSession = await chatSessionRepository.create({
+        userId,
+        sessionTitle: `Standup ${new Date().toLocaleDateString()}`
+      });
+    }
+
+    // Save user message to DB
+    await messageRepository.create({
+      sessionId: chatSession.id,
+      role: 'user',
+      content
+    });
+
     // Set AI model based on user preference
     aiService.setModel(user.preferredModel);
 
-    // Try to create timesheet entry from the message
+    // Get AI response based on current session state
+    const aiResult = await aiService.getTeamLeadResponse(
+      content,
+      {
+        stage: session.stage,
+        work: session.work,
+        hours: session.hours,
+        blockers: session.blockers,
+        tomorrowPlan: session.tomorrowPlan,
+      },
+      user.name
+    );
+
+    // Extract and save collected data
+    if (aiResult.extractedData) {
+      await standupSessionRepository.update(session.id, aiResult.extractedData);
+    }
+
+    // Move to next stage if indicated
+    if (aiResult.nextStage && aiResult.nextStage !== session.stage) {
+      await standupSessionRepository.update(session.id, { stage: aiResult.nextStage });
+    }
+
+    // Save AI response to DB
+    await messageRepository.create({
+      sessionId: chatSession.id,
+      role: 'assistant',
+      content: aiResult.response
+    });
+
+    // If session is completed, create timesheet entry
     let entryCreated = false;
-    let entry: any = null;
-    let aiResponse = '';
+    if (aiResult.nextStage === 'COMPLETED' && session.stage !== 'COMPLETED') {
+      try {
+        const updatedSession = await standupSessionRepository.getToday(userId);
+        if (updatedSession && updatedSession.work) {
+          // Create daily status (timesheet entry)
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
 
-    try {
-      entry = await timesheetService.createEntry(userId, {
-        statusText: content,
-      });
-      entryCreated = true;
+          const entry = await dailyStatusRepository.create({
+            userId,
+            workDate: today,
+            statusText: this.formatStatusText(updatedSession),
+            aiSummary: updatedSession.work,
+            hours: updatedSession.hours || user.dailyHours,
+            workingFlag: true,
+          });
 
-      aiResponse = `Thank you for your update! I've recorded your work status:
+          entryCreated = true;
+          logger.info(`Timesheet created for ${user.email} - Date: ${today.toISOString()}`);
+          
+          // Save summary to chat history
+          const summary = `📋 **Daily Standup Summary**\n\n**Work Completed:**\n${updatedSession.work || 'Not provided'}\n\n**Hours Worked:** ${updatedSession.hours || 'Not specified'}h\n\n✅ Your timesheet has been recorded!`;
 
-**Summary:** ${entry.aiSummary}
-
-**Hours:** ${entry.hours}
-**Date:** ${entry.workDate.toLocaleDateString()}
-
-Your entry has been saved to your timesheet. You can view it on your dashboard anytime.`;
-    } catch (error: any) {
-      if (error.message?.includes('already submitted')) {
-        aiResponse = error.message;
-      } else {
-        // Generate a conversational response if timesheet creation failed
-        logger.warn('Timesheet creation failed:', error);
-        aiResponse = await aiService.generateResponse(content);
+          await messageRepository.create({
+            sessionId: chatSession.id,
+            role: 'assistant',
+            content: summary
+          });
+        }
+      } catch (error: any) {
+        if (error.code === 'P2002') {
+          logger.warn('Timesheet already exists for today');
+        } else {
+          logger.error('Timesheet creation error:', error);
+        }
       }
     }
 
-    // Save AI response
-    const assistantMessage = await messageRepository.create({
-      sessionId: session.id,
-      role: 'assistant',
-      content: aiResponse,
-    });
-
     res.json({
       success: true,
       data: {
-        session,
-        userMessage,
-        assistantMessage,
+        sessionId: session.id,
+        stage: aiResult.nextStage || session.stage,
+        aiResponse: aiResult.response,
+        currentData: {
+          work: session.work || aiResult.extractedData?.work || '',
+          hours: session.hours || aiResult.extractedData?.hours,
+          blockers: session.blockers || aiResult.extractedData?.blockers || '',
+          tomorrowPlan: session.tomorrowPlan || aiResult.extractedData?.tomorrowPlan || '',
+        },
         entryCreated,
-        entry: entryCreated ? entry : null,
       },
+      message: aiResult.nextStage === 'COMPLETED' 
+        ? 'Your daily standup has been completed and timesheet recorded!'
+        : 'Message processed successfully',
     });
   });
 
-  getHistory = asyncHandler(async (req: Request, res: Response) => {
+  /**
+   * Get current standup session
+   */
+  getSession = asyncHandler(async (req: Request, res: Response) => {
     const userId = req.userId!;
-    const { sessionId } = req.params;
-    const { page, limit } = paginationSchema.parse(req.query);
 
-    const session = await chatSessionRepository.findById(sessionId);
-    if (!session || session.userId !== userId) {
-      throw new NotFoundError('Chat session not found');
+    const session = await standupSessionRepository.getToday(userId);
+    if (!session) {
+      return res.json({
+        success: true,
+        data: null,
+        message: 'No active standup session for today',
+      });
     }
 
-    const skip = (page - 1) * limit;
-    const messages = await messageRepository.findBySessionId(sessionId, skip, limit);
-    const total = await messageRepository.countBySessionId(sessionId);
+    // Get chat history
+    let history = [];
+    const chatSession = await chatSessionRepository.findTodaySession(userId);
+    if (chatSession) {
+      history = await messageRepository.findBySessionId(chatSession.id);
+    }
 
     res.json({
       success: true,
       data: {
-        session,
-        messages,
-        total,
-        page,
-        limit,
-        hasMore: skip + limit < total,
+        sessionId: session.id,
+        stage: session.stage,
+        currentData: {
+          work: session.work,
+          hours: session.hours,
+          blockers: session.blockers,
+          tomorrowPlan: session.tomorrowPlan,
+        },
+        history,
       },
+      message: 'Standup session retrieved successfully',
     });
   });
 
-  getSessions = asyncHandler(async (req: Request, res: Response) => {
+  /**
+   * Reset standup session (start over)
+   */
+  resetSession = asyncHandler(async (req: Request, res: Response) => {
     const userId = req.userId!;
-    const { page, limit } = paginationSchema.parse(req.query);
 
-    const skip = (page - 1) * limit;
-    const sessions = await chatSessionRepository.findByUserId(userId, skip, limit);
-    const total = await chatSessionRepository.countByUserId(userId);
+    const session = await standupSessionRepository.getToday(userId);
+    if (session) {
+      await standupSessionRepository.update(session.id, {
+        stage: 'GREETING',
+        work: '',
+        hours: null,
+        blockers: '',
+        tomorrowPlan: '',
+      });
 
-    res.json({
-      success: true,
-      data: {
-        sessions,
-        total,
-        page,
-        limit,
-        hasMore: skip + limit < total,
-      },
-    });
-  });
+      // Clear chat history
+      const chatSession = await chatSessionRepository.findTodaySession(userId);
+      if (chatSession) {
+        await messageRepository.deleteBySessionId(chatSession.id);
+      }
 
-  deleteSession = asyncHandler(async (req: Request, res: Response) => {
-    const userId = req.userId!;
-    const { sessionId } = req.params;
-
-    const session = await chatSessionRepository.findById(sessionId);
-    if (!session || session.userId !== userId) {
-      throw new NotFoundError('Chat session not found');
+      return res.json({
+        success: true,
+        message: 'Standup session reset successfully',
+      });
     }
 
-    // Delete all messages first
-    await messageRepository.deleteBySessionId(sessionId);
-
-    // Delete session
-    await chatSessionRepository.delete(sessionId);
-
-    res.json({
-      success: true,
-      message: 'Chat session deleted successfully',
+    res.status(404).json({
+      success: false,
+      error: 'No active standup session',
+      message: 'No standup session found for today',
     });
   });
+
+  /**
+   * Format collected data into readable status text
+   */
+  private formatStatusText(session: any): string {
+    const parts = [];
+    
+    if (session.work) parts.push(`Work: ${session.work}`);
+    if (session.hours) parts.push(`Hours: ${session.hours}`);
+    if (session.blockers) parts.push(`Blockers: ${session.blockers}`);
+    if (session.tomorrowPlan) parts.push(`Tomorrow: ${session.tomorrowPlan}`);
+
+    return parts.join(' | ');
+  }
 }
 
 export const chatController = new ChatController();

@@ -12,6 +12,7 @@ export class DashboardController {
     res.json({
       success: true,
       data: stats,
+      message: 'Dashboard statistics retrieved successfully',
     });
   });
 
@@ -74,6 +75,7 @@ export class DashboardController {
         daily: dailyData,
         categories,
       },
+      message: 'Chart data retrieved successfully',
     });
   });
 }

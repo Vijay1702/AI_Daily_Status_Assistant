@@ -1,7 +1,6 @@
 import { dailyStatusRepository } from '../repositories/dailyStatus.repository.js';
 import { userRepository } from '../repositories/user.repository.js';
-import { aiService } from './ai.service.js';
-import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
+import { ConflictError, NotFoundError } from '../utils/errors.js';
 import { CreateTimesheetInput } from '../utils/validation.js';
 import logger from '../utils/logger.js';
 import { DashboardStats, TimesheetEntry } from '../types/index.js';
@@ -25,9 +24,7 @@ export class TimesheetService {
       throw new ConflictError('You already submitted a status for today. Please edit the existing entry or contact support.');
     }
 
-    // Analyze status using AI
     const hours = input.hours || user.dailyHours;
-    const aiResponse = await aiService.analyzeStatus(input.statusText, hours);
 
     logger.info(`Creating timesheet entry for user ${userId}`, {
       workDate,
@@ -38,10 +35,10 @@ export class TimesheetService {
     const entry = await dailyStatusRepository.create({
       userId,
       statusText: input.statusText,
-      aiSummary: aiResponse.summary,
-      hours: aiResponse.hours,
+      aiSummary: input.statusText.substring(0, 200),
+      hours,
       workDate,
-      workingFlag: input.workingFlag ?? aiResponse.workingFlag,
+      workingFlag: input.workingFlag ?? true,
     });
 
     return this.formatEntry(entry);
@@ -87,6 +84,40 @@ export class TimesheetService {
 
     return {
       items: entries.map((e) => this.formatEntry(e)),
+      total,
+      page,
+      limit,
+      hasMore: skip + limit < total,
+    };
+  }
+
+  async getAllEntries(page: number = 1, limit: number = 20): Promise<{
+    items: (TimesheetEntry & { user: any })[];
+    total: number;
+    page: number;
+    limit: number;
+    hasMore: boolean;
+  }> {
+    const skip = (page - 1) * limit;
+    // We need to fetch all entries, ordered by date desc, including user info
+    const prisma = (await import('../utils/prisma.js')).prisma;
+    
+    const [entries, total] = await Promise.all([
+      prisma.dailyStatus.findMany({
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, masterNo: true }
+          }
+        }
+      }),
+      prisma.dailyStatus.count()
+    ]);
+
+    return {
+      items: entries.map((e) => ({ ...this.formatEntry(e), user: e.user })),
       total,
       page,
       limit,

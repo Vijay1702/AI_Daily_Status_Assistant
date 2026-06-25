@@ -22,12 +22,14 @@ model User {
   reminderTime    String    @default("18:00") @map("reminder_time")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
+  lastLoginAt     DateTime? @map("last_login_at")
 
   // Relations
   chatSessions    ChatSession[]
   dailyStatuses   DailyStatus[]
   monthlyReports  MonthlyReport[]
   reminderLogs    ReminderLog[]
+  standupSession  StandupSession[]
 
   @@map("users")
 }
@@ -53,6 +55,7 @@ model Message {
   sessionId   String    @map("session_id")
   role        String    // "user" or "assistant"
   content     String    @db.Text
+  metadata    Json?     @db.JsonB // Store AI analysis and other metadata
   createdAt   DateTime  @default(now()) @map("created_at")
 
   // Relations
@@ -116,3 +119,30 @@ model ReminderLog {
   @@index([userId])
   @@map("reminder_logs")
 }
+
+// Standup session - tracks current standup conversation state (NO HISTORY)
+model StandupSession {
+  id            String    @id @default(cuid())
+  userId        String    @map("user_id")
+  stage         String    @default("GREETING") // GREETING, WAITING_FOR_WORK, WAITING_FOR_HOURS, WAITING_FOR_BLOCKERS, WAITING_FOR_TOMORROW, COMPLETED
+  
+  // Collected data for current standup
+  work          String    @db.Text @default("")
+  hours         Int?
+  blockers      String    @db.Text @default("")
+  tomorrowPlan  String    @db.Text @default("")
+  
+  // Session metadata
+  sessionDate   DateTime  @map("session_date") @db.Date
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sessionDate])
+  @@index([userId])
+  @@index([sessionDate])
+  @@map("standup_sessions")
+}
+

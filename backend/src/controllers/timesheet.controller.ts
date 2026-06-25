@@ -52,6 +52,20 @@ export class TimesheetController {
     res.json({
       success: true,
       data: result,
+      message: 'Timesheet entries retrieved successfully',
+    });
+  });
+
+  monitor = asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.userId!;
+    const { page, limit } = paginationSchema.parse(req.query);
+
+    const result = await timesheetService.getEntries(userId, page, limit);
+
+    res.json({
+      success: true,
+      data: result,
+      message: 'Monitor entries retrieved successfully',
     });
   });
 
@@ -63,6 +77,7 @@ export class TimesheetController {
       return res.status(400).json({
         success: false,
         error: 'Month and year are required',
+        message: 'Please provide month and year parameters',
       });
     }
 
@@ -75,6 +90,7 @@ export class TimesheetController {
     res.json({
       success: true,
       data: entries,
+      message: 'Monthly timesheet entries retrieved successfully',
     });
   });
 }

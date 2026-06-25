@@ -1,18 +1,82 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Base Styles */
 html {
   scroll-behavior: smooth;
+  font-family: 'Inter', sans-serif;
 }
 
+/* Dark Mode Base */
 body {
-  @apply bg-gray-50;
+  @apply text-on-surface-dark bg-background;
+  position: relative;
+  min-height: 100vh;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  @apply font-geist;
+}
+
+/* Surface and Container Styles */
+.surface-container {
+  @apply bg-surface-dark-elevated border border-outline-dark rounded-lg text-on-surface-dark;
+}
+
+.surface-card {
+  @apply bg-surface-dark-elevated border border-outline-dark rounded-lg p-6 transition-all duration-200 hover:bg-surface-dark-container-high;
+}
+
+.surface-input {
+  @apply bg-background border border-outline-dark rounded px-4 py-3 text-on-surface-dark placeholder-outline focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-surface-dark-elevated transition-all duration-200;
+}
+
+/* Primary Button */
+.btn-primary {
+  @apply bg-primary-500 text-white font-medium py-3 px-6 rounded hover:bg-primary-600 focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-surface-dark-elevated transition-colors;
+}
+
+.btn-primary:disabled {
+  @apply bg-outline-dark text-outline cursor-not-allowed;
+}
+
+/* Secondary Button */
+.btn-secondary {
+  @apply border border-outline-dark bg-transparent text-on-surface-dark font-medium py-3 px-6 rounded hover:bg-surface-dark-container-high focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-surface-dark-elevated transition-colors;
+}
+
+/* Status Badge */
+.badge-status {
+  @apply inline-flex items-center px-3 py-1 rounded text-label-md font-medium border;
+}
+
+.badge-success {
+  @apply bg-success bg-opacity-10 text-success border-success;
+}
+
+.badge-warning {
+  @apply bg-warning bg-opacity-10 text-warning border-warning;
+}
+
+.badge-error {
+  @apply bg-error bg-opacity-10 text-error border-error;
+}
+
+.badge-info {
+  @apply bg-primary-500 bg-opacity-10 text-primary-400 border-primary-500;
 }
 
 /* Chat message styles */
 .message-container {
-  @apply flex flex-col space-y-2;
+  @apply flex flex-col space-y-4;
 }
 
 .message-user {
@@ -20,7 +84,7 @@ body {
 }
 
 .message-user .message-bubble {
-  @apply bg-blue-600 text-white rounded-lg rounded-tr-none py-2 px-4 max-w-xs lg:max-w-md break-words;
+  @apply bg-primary-500 text-white rounded-lg rounded-tr-none py-3 px-4 max-w-xs lg:max-w-md break-words;
 }
 
 .message-assistant {
@@ -28,7 +92,11 @@ body {
 }
 
 .message-assistant .message-bubble {
-  @apply bg-gray-200 text-gray-900 rounded-lg rounded-tl-none py-2 px-4 max-w-xs lg:max-w-md break-words;
+  @apply bg-surface-dark-container-high text-on-surface-dark border border-outline-dark rounded-lg rounded-tl-none py-3 px-4 max-w-xs lg:max-w-md break-words;
+}
+
+.message-ai-marker {
+  @apply text-primary-400 text-xs font-medium flex items-center gap-1;
 }
 
 /* Loading animation */
@@ -59,4 +127,22 @@ body {
 /* Smooth transitions */
 .transition-smooth {
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  @apply w-2;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-surface-dark-base;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-outline-dark rounded-full hover:bg-outline;
+}
+
+/* Focus styles */
+:focus-visible {
+  @apply outline-none ring-2 ring-primary-500 ring-offset-2 ring-offset-surface-dark-base rounded;
 }

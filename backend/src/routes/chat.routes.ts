@@ -6,10 +6,9 @@ const router = Router();
 
 router.use(authMiddleware);
 
-router.post('/session', chatController.createSession);
+// Standup conversation endpoints
 router.post('/message', chatController.sendMessage);
-router.get('/sessions', chatController.getSessions);
-router.get('/:sessionId/history', chatController.getHistory);
-router.delete('/:sessionId', chatController.deleteSession);
+router.get('/session', chatController.getSession);
+router.post('/session/reset', chatController.resetSession);
 
 export default router;

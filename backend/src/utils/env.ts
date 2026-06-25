@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import 'dotenv/config.js';
 
 const envSchema = z.object({
   // Database

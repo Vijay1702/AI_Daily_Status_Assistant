@@ -25,7 +25,11 @@ export const updateProfileSchema = z.object({
 
 // Chat schemas
 export const chatMessageSchema = z.object({
-  sessionId: z.string().optional(),
+  sessionId: z.string().nullable().optional(),
+  content: z.string().min(1, 'Message cannot be empty').max(5000),
+});
+
+export const sendChatMessageSchema = z.object({
   content: z.string().min(1, 'Message cannot be empty').max(5000),
 });
 
@@ -51,7 +55,7 @@ export const updateTimesheetSchema = z.object({
 // Pagination schema
 export const paginationSchema = z.object({
   page: z.string().transform(Number).pipe(z.number().int().min(1)).default('1'),
-  limit: z.string().transform(Number).pipe(z.number().int().min(1).max(100)).default('10'),
+  limit: z.string().transform(Number).pipe(z.number().int().min(1).max(500)).default('10'),
 });
 
 // Query schemas

@@ -4,22 +4,49 @@ import logger from '../utils/logger.js';
 import { EmailOptions } from '../types/index.js';
 
 export class EmailService {
-  private transporter: nodemailer.Transporter;
+  private transporter: nodemailer.Transporter | null = null;
+  private isTestAccount = false;
 
   constructor() {
-    this.transporter = nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: env.SMTP_PORT,
-      secure: env.SMTP_PORT === 465,
-      auth: {
-        user: env.SMTP_USER,
-        pass: env.SMTP_PASS,
-      },
-    });
+    // Initialization is deferred to ensure async createTestAccount can run
+  }
+
+  private async getTransporter(): Promise<nodemailer.Transporter> {
+    if (this.transporter) return this.transporter;
+
+    if (env.SMTP_USER === 'test@example.com' || !env.SMTP_USER) {
+      logger.info('Creating Ethereal test email account...');
+      const testAccount = await nodemailer.createTestAccount();
+      this.transporter = nodemailer.createTransport({
+        host: 'smtp.ethereal.email',
+        port: 587,
+        secure: false,
+        auth: {
+          user: testAccount.user,
+          pass: testAccount.pass,
+        },
+      });
+      this.isTestAccount = true;
+      logger.info(`Ethereal Email connected. User: ${testAccount.user}`);
+    } else {
+      this.transporter = nodemailer.createTransport({
+        host: env.SMTP_HOST,
+        port: env.SMTP_PORT,
+        secure: env.SMTP_PORT === 465,
+        auth: {
+          user: env.SMTP_USER,
+          pass: env.SMTP_PASS,
+        },
+      });
+    }
+
+    return this.transporter;
   }
 
   async sendEmail(options: EmailOptions): Promise<void> {
     try {
+      const transporter = await this.getTransporter();
+      
       const mailOptions = {
         from: env.DEFAULT_FROM_EMAIL,
         to: options.to,
@@ -28,8 +55,12 @@ export class EmailService {
         attachments: options.attachments || [],
       };
 
-      const info = await this.transporter.sendMail(mailOptions);
+      const info = await transporter.sendMail(mailOptions);
       logger.info(`Email sent successfully: ${info.messageId}`);
+      
+      if (this.isTestAccount) {
+        logger.info(`📧 Email Preview URL: ${nodemailer.getTestMessageUrl(info)}`);
+      }
     } catch (error) {
       logger.error('Error sending email:', error);
       throw error;
@@ -139,9 +170,33 @@ export class EmailService {
     });
   }
 
+  async sendFirstLoginEmail(name: string, email: string): Promise<void> {
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #333;">New Login Alert</h2>
+        <p>Hello <strong>${name}</strong>,</p>
+        <p>We noticed that you just logged into the AI Daily Status Assistant for the first time.</p>
+        <p>If this was you, there's nothing else you need to do! Have a great day and don't forget to submit your daily reports.</p>
+        <p>If this wasn't you, please reset your password immediately.</p>
+        <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+        <p style="color: #666; font-size: 12px;">
+          Regards,<br>
+          <strong>AI Daily Status Assistant Security Team</strong>
+        </p>
+      </div>
+    `;
+
+    await this.sendEmail({
+      to: email,
+      subject: 'First Login Alert - AI Daily Status Assistant',
+      html,
+    });
+  }
+
   async verifyConnection(): Promise<boolean> {
     try {
-      await this.transporter.verify();
+      const transporter = await this.getTransporter();
+      await transporter.verify();
       logger.info('Email service connected successfully');
       return true;
     } catch (error) {

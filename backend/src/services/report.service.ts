@@ -60,7 +60,7 @@ export class ReportService {
       pattern: 'solid',
       fgColor: { argb: 'FF366092' },
     };
-    headerRow.alignment = { horizontal: 'center', vertical: 'center' };
+    headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
 
     // Add data rows
     let rowIndex = 2;
@@ -93,7 +93,7 @@ export class ReportService {
 
       row.alignment = {
         horizontal: 'left',
-        vertical: 'center',
+        vertical: 'middle',
         wrapText: true,
       };
 
@@ -148,7 +148,7 @@ export class ReportService {
     const titleRow = worksheet.getRow(1);
     titleRow.values = [`Monthly Timesheet - ${monthName} ${year}`];
     titleRow.font = { bold: true, size: 14, color: { argb: 'FF366092' } };
-    titleRow.alignment = { horizontal: 'center', vertical: 'center' };
+    titleRow.alignment = { horizontal: 'center', vertical: 'middle' };
     worksheet.mergeCells('A1:G1');
 
     // Insert empty row

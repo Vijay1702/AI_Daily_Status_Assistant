@@ -4,6 +4,7 @@ import { env } from '../utils/env.js';
 import { userRepository } from '../repositories/user.repository.js';
 import { ValidationError, UnauthorizedError, ConflictError } from '../utils/errors.js';
 import { RegisterInput, LoginInput } from '../utils/validation.js';
+import { emailService } from './email.service.js';
 import logger from '../utils/logger.js';
 
 export class AuthService {
@@ -48,6 +49,20 @@ export class AuthService {
     if (!isPasswordValid) {
       throw new UnauthorizedError('Invalid email or password');
     }
+
+    // Check for first-time login
+    if (!user.lastLoginAt) {
+      try {
+        await emailService.sendFirstLoginEmail(user.name, user.email);
+        logger.info(`First login email sent to ${user.email}`);
+      } catch (error) {
+        logger.error(`Failed to send first login email to ${user.email}:`, error);
+        // Don't block login if email fails
+      }
+    }
+
+    // Update lastLoginAt
+    await userRepository.update(user.id, { lastLoginAt: new Date() } as any);
 
     logger.info(`User logged in: ${user.id}`);
 
@@ -96,8 +111,8 @@ export class AuthService {
       },
       env.JWT_SECRET,
       {
-        expiresIn: env.JWT_EXPIRY,
-      }
+        expiresIn: env.JWT_EXPIRY as string,
+      } as any
     );
 
     return {

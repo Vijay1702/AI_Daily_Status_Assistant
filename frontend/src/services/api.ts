@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { ApiResponse } from '@/types';
+import { useToastStore } from '@/store/toast';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -23,12 +24,41 @@ class ApiClient {
 
     // Handle errors
     this.client.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        // Show success toast for success responses with message
+        if (response.data?.success && response.data?.message) {
+          // Don't show toast for GET requests (data retrieval)
+          if (response.config.method !== 'get') {
+            try {
+              const toastStore = useToastStore();
+              toastStore.addToast(response.data.message, 'success');
+            } catch (e) {
+              // Toast store not available yet
+            }
+          }
+        }
+        return response;
+      },
       (error: AxiosError) => {
-        if (error.response?.status === 401) {
+        const originalRequest = error.config;
+        
+        // Redirect to login on 401, but ONLY if the request was not the login attempt itself
+        if (error.response?.status === 401 && !originalRequest?.url?.includes('/auth/login')) {
           localStorage.removeItem('token');
           window.location.href = '/login';
         }
+        
+        // Show error toast
+        try {
+          const toastStore = useToastStore();
+          const errorData = error.response?.data as any;
+          const errorMessage = errorData?.message || errorData?.error || 'An error occurred';
+          toastStore.addToast(errorMessage, 'error');
+        } catch (e) {
+          // Toast store not available yet, error will show in console
+          console.error('Error:', error);
+        }
+        
         return Promise.reject(error);
       }
     );
@@ -68,32 +98,17 @@ class ApiClient {
     return this.client.put<ApiResponse<any>>('/auth/profile', data);
   }
 
-  // Chat APIs
-  async createChatSession(sessionTitle: string) {
-    return this.client.post<ApiResponse<any>>('/chat/session', { sessionTitle });
+  // Chat APIs - Standup Conversation
+  async sendChatMessage(content: string) {
+    return this.client.post<ApiResponse<any>>('/chat/message', { content });
   }
 
-  async sendChatMessage(content: string, sessionId?: string) {
-    return this.client.post<ApiResponse<any>>('/chat/message', {
-      content,
-      sessionId,
-    });
+  async getChatSession() {
+    return this.client.get<ApiResponse<any>>('/chat/session');
   }
 
-  async getChatHistory(sessionId: string, page = 1, limit = 50) {
-    return this.client.get<ApiResponse<any>>(`/chat/${sessionId}/history`, {
-      params: { page, limit },
-    });
-  }
-
-  async getChatSessions(page = 1, limit = 10) {
-    return this.client.get<ApiResponse<any>>('/chat/sessions', {
-      params: { page, limit },
-    });
-  }
-
-  async deleteChatSession(sessionId: string) {
-    return this.client.delete<ApiResponse<void>>(`/chat/${sessionId}`);
+  async resetChatSession() {
+    return this.client.post<ApiResponse<any>>('/chat/session/reset');
   }
 
   // Timesheet APIs
@@ -124,6 +139,12 @@ class ApiClient {
 
   async deleteTimesheet(id: string) {
     return this.client.delete<ApiResponse<void>>(`/timesheet/${id}`);
+  }
+
+  async getMonitorReports(page = 1, limit = 20) {
+    return this.client.get<ApiResponse<any>>('/timesheet/monitor', {
+      params: { page, limit },
+    });
   }
 
   // Dashboard APIs

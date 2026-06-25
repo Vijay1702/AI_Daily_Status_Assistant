@@ -11,11 +11,21 @@ export interface JwtPayload extends AuthPayload {
   exp: number;
 }
 
+export interface TaskCategory {
+  name: string;
+  percentage: number;
+}
+
 export interface AIResponse {
   summary: string;
   tasks: string[];
   hours: number;
   workingFlag: boolean;
+  categories?: TaskCategory[];
+  blockers?: string[];
+  nextActions?: string[];
+  sentiment?: 'positive' | 'neutral' | 'concerning';
+  confidence?: number;
 }
 
 export interface DailyStatusInput {
@@ -32,6 +42,13 @@ export interface TimesheetEntry {
   hours: number;
   workDate: Date;
   workingFlag: boolean;
+  aiAnalysis?: {
+    categories?: TaskCategory[];
+    blockers?: string[];
+    nextActions?: string[];
+    sentiment?: string;
+    confidence?: number;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -67,6 +84,10 @@ export interface ChatMessage {
   sessionId: string;
   role: 'user' | 'assistant';
   content: string;
+  metadata?: {
+    aiAnalysis?: AIResponse;
+    sentiment?: string;
+  };
   createdAt: Date;
 }
 
@@ -74,6 +95,8 @@ export interface ChatSession {
   id: string;
   userId: string;
   sessionTitle: string;
+  sessionContext?: string;
+  messageCount?: number;
   createdAt: Date;
 }
 
@@ -84,6 +107,8 @@ export interface MonthlyReportData {
   year: number;
   filePath: string;
   emailSent: boolean;
+  totalHours?: number;
+  totalTasks?: number;
   createdAt: Date;
 }
 
@@ -116,3 +141,4 @@ export interface PaginatedResponse<T> {
   limit: number;
   hasMore: boolean;
 }
+

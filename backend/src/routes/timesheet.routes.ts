@@ -8,6 +8,7 @@ router.use(authMiddleware);
 
 router.post('/', timesheetController.createEntry);
 router.get('/', timesheetController.getEntries);
+router.get('/monitor', timesheetController.monitor);
 router.get('/monthly', timesheetController.getMonthlyEntries);
 router.put('/:id', timesheetController.updateEntry);
 router.delete('/:id', timesheetController.deleteEntry);

@@ -34,6 +34,32 @@ export class ChatSessionRepository {
       where: { userId },
     });
   }
+
+  async findTodaySession(userId: string): Promise<ChatSession | null> {
+    // Get the latest session and check if it's from today client-side
+    const latestSession = await prisma.chatSession.findFirst({
+      where: {
+        userId,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 1,
+    });
+
+    if (!latestSession) {
+      return null;
+    }
+
+    // Check if session is from today
+    const sessionDate = new Date(latestSession.createdAt);
+    const today = new Date();
+    
+    const isSameDay = 
+      sessionDate.getFullYear() === today.getFullYear() &&
+      sessionDate.getMonth() === today.getMonth() &&
+      sessionDate.getDate() === today.getDate();
+
+    return isSameDay ? latestSession : null;
+  }
 }
 
 export class MessageRepository {
