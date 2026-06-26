@@ -20,18 +20,7 @@ function deriveTags(text: string): string[] {
   return tags.slice(0, 2);
 }
 
-// Split statusText into title + subtitle
-function splitSummary(text: string): { title: string; subtitle: string } {
-  if (!text) return { title: '—', subtitle: '' };
-  const lines = text.split('\n').map(l => l.replace(/^•\s*/, '').trim()).filter(Boolean);
-  if (lines.length === 1) {
-    const words = lines[0].split(' ');
-    const title = words.slice(0, 5).join(' ');
-    const subtitle = words.slice(5).join(' ');
-    return { title, subtitle };
-  }
-  return { title: lines[0], subtitle: lines.slice(1).join(' • ') };
-}
+
 
 export default function MonitorPage() {
   const [allEntries, setAllEntries] = useState<any[]>([]);
@@ -175,7 +164,7 @@ export default function MonitorPage() {
             </thead>
             <tbody>
               {paginated.map((entry) => {
-                const summaryLines = (entry.aiSummary || '').split('\n').map(l => l.replace(/^•\s*/, '').trim()).filter(Boolean);
+
                 const tags = deriveTags(entry.aiSummary || '');
                 const submitted = entry.workingFlag;
 
@@ -198,9 +187,9 @@ export default function MonitorPage() {
                       <ul className="list-disc list-inside flex flex-col gap-1">
                         {(entry.aiSummary || '')
                           .split('\n')
-                          .map(l => l.replace(/^•\s*/, '').trim())
+                          .map((l: string) => l.replace(/^•\s*/, '').trim())
                           .filter(Boolean)
-                          .map((line, idx) => (
+                          .map((line: string, idx: number) => (
                             <li key={idx} className="text-body-sm font-medium text-on-surface-dark font-inter leading-snug">
                               {line}
                             </li>
