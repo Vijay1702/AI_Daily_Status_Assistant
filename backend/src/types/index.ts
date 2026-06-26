@@ -116,6 +116,7 @@ export interface EmailOptions {
   to: string;
   subject: string;
   html: string;
+  text?: string;
   attachments?: Array<{
     filename: string;
     path: string;

@@ -15,9 +15,10 @@ const envSchema = z.object({
   SMTP_USER: z.string().email(),
   SMTP_PASS: z.string(),
 
-  // Ollama
+  // Ollama & Gemini
   OLLAMA_BASE_URL: z.string().url().default('http://localhost:11434'),
   OLLAMA_MODEL: z.enum(['llama3', 'qwen3', 'mistral']).default('llama3'),
+  GEMINI_API_KEY: z.string().optional(),
 
   // Server
   PORT: z.string().transform(Number).default('5000'),

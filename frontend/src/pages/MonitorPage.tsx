@@ -167,7 +167,7 @@ export default function MonitorPage() {
             <thead>
               <tr className="border-b border-outline-dark">
                 <th className="px-5 py-3 text-label-sm text-outline font-semibold uppercase tracking-widest font-inter w-32">Date</th>
-                <th className="px-5 py-3 text-label-sm text-outline font-semibold uppercase tracking-widest font-inter">Summary</th>
+                <th className="px-5 py-3 text-label-sm text-outline font-semibold uppercase tracking-widest font-inter">Worked</th>
                 <th className="px-5 py-3 text-label-sm text-outline font-semibold uppercase tracking-widest font-inter w-20 text-right">Hours</th>
                 <th className="px-5 py-3 text-label-sm text-outline font-semibold uppercase tracking-widest font-inter w-40">Tags</th>
                 <th className="px-5 py-3 text-label-sm text-outline font-semibold uppercase tracking-widest font-inter w-28 text-center">Status</th>
@@ -175,8 +175,8 @@ export default function MonitorPage() {
             </thead>
             <tbody>
               {paginated.map((entry) => {
-                const { title, subtitle } = splitSummary(entry.statusText || entry.aiSummary || '');
-                const tags = deriveTags(entry.statusText || entry.aiSummary || '');
+                const summaryLines = (entry.aiSummary || '').split('\n').map(l => l.replace(/^•\s*/, '').trim()).filter(Boolean);
+                const tags = deriveTags(entry.aiSummary || '');
                 const submitted = entry.workingFlag;
 
                 return (
@@ -195,14 +195,17 @@ export default function MonitorPage() {
 
                     {/* Summary */}
                     <td className="px-5 py-4 align-top">
-                      <p className="text-body-sm font-semibold text-on-surface-dark font-inter leading-snug">
-                        {title}
-                      </p>
-                      {subtitle && (
-                        <p className="text-label-sm text-outline font-inter mt-0.5 leading-snug">
-                          {subtitle}
-                        </p>
-                      )}
+                      <ul className="list-disc list-inside flex flex-col gap-1">
+                        {(entry.aiSummary || '')
+                          .split('\n')
+                          .map(l => l.replace(/^•\s*/, '').trim())
+                          .filter(Boolean)
+                          .map((line, idx) => (
+                            <li key={idx} className="text-body-sm font-medium text-on-surface-dark font-inter leading-snug">
+                              {line}
+                            </li>
+                        ))}
+                      </ul>
                     </td>
 
                     {/* Hours */}

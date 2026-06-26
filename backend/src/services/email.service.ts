@@ -52,6 +52,7 @@ export class EmailService {
         to: options.to,
         subject: options.subject,
         html: options.html,
+        ...(options.text && { text: options.text }),
         attachments: options.attachments || [],
       };
 
@@ -87,10 +88,13 @@ export class EmailService {
       </div>
     `;
 
+    const text = `Hello ${name},\n\nThis is a friendly reminder that you haven't submitted your daily work status yet.\n\nPlease take a moment to update your status here: ${env.FRONTEND_URL}/chat\n\nRegards,\nAI Daily Status Assistant`;
+
     await this.sendEmail({
       to: email,
       subject: 'Daily Status Reminder - Please Update Your Work Status',
       html,
+      text,
     });
   }
 
@@ -124,10 +128,13 @@ export class EmailService {
       </div>
     `;
 
+    const text = `Hello ${name},\n\nYour monthly timesheet report for ${monthName} ${year} is ready. Please find the attached Excel file containing your logged status updates.\n\nRegards,\nAI Daily Status Assistant`;
+
     await this.sendEmail({
       to: email,
       subject: `Monthly Timesheet Report - ${monthName} ${year}`,
       html,
+      text,
       attachments: [
         {
           filename: `timesheet_${monthName.toLowerCase()}_${year}.xlsx`,
@@ -163,10 +170,13 @@ export class EmailService {
       </div>
     `;
 
+    const text = `Hello ${name},\n\nThank you for registering! Your account has been successfully created.\n\nYou can now start submitting your daily status updates via the chat interface here: ${env.FRONTEND_URL}/chat\n\nRegards,\nAI Daily Status Assistant`;
+
     await this.sendEmail({
       to: email,
       subject: 'Welcome to AI Daily Status Assistant',
       html,
+      text,
     });
   }
 
@@ -186,10 +196,13 @@ export class EmailService {
       </div>
     `;
 
+    const text = `Hello ${name},\n\nWe noticed a new login on your account. If this was you, you can ignore this alert.\n\nRegards,\nAI Daily Status Assistant Security Team`;
+
     await this.sendEmail({
       to: email,
       subject: 'First Login Alert - AI Daily Status Assistant',
       html,
+      text,
     });
   }
 

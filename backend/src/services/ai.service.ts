@@ -77,29 +77,46 @@ export class AIService {
     if (!text) return text;
 
     try {
-      logger.info(`Attempting Ollama rephrase with model: ${this.model}`);
       const prompt = `You are a professional daily standup summary assistant. 
-Rephrase the following raw daily work status description into a single concise, professional, past-tense bullet point (e.g., "Implemented login validation" or "Optimized database queries"). 
-Do not include any pleasantries, intro, conversational filler, or multiple sentences. Just return the rephrased status line.
+Rephrase the following raw daily work status description into highly professional, concise, past-tense sentences. 
+The input often starts with a category prefix (e.g., "Designed UX for:"). Combine this prefix and the description into a SINGLE coherent past-tense sentence representing one task.
+Only separate into multiple tasks if the user explicitly provided a list of completely different items.
+DO NOT use bullet point characters (like -, *, or •) in your response. Do not include any pleasantries, intro, or conversational filler. Just return the rephrased text.
 
 Raw status: "${text}"`;
 
-      const response = await axios.post(
-        `${this.baseURL}/api/generate`,
-        {
-          model: this.model,
-          prompt,
-          stream: false,
-        },
-        {
-          timeout: 4000, // Fast fallback if Ollama is not responding/not installed
-        }
-      );
+      let generated = '';
 
-      const generated = response.data.response.trim();
+      if (env.GEMINI_API_KEY) {
+        logger.info(`Attempting Gemini API rephrase`);
+        const geminiRes = await axios.post(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
+          {
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.2 }
+          },
+          { timeout: 30000 }
+        );
+        generated = geminiRes.data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      } else {
+        logger.info(`Attempting Ollama rephrase with model: ${this.model}`);
+        const response = await axios.post(
+          `${this.baseURL}/api/generate`,
+          {
+            model: this.model,
+            prompt,
+            stream: false,
+          },
+          {
+            timeout: 60000, // Wait up to 60s for high-quality LLM generation
+          }
+        );
+        generated = response.data.response?.trim() || '';
+      }
+
       if (generated && generated.length > 3) {
-        // Clean leading bullets or quotes if any
-        let cleaned = generated.replace(/^[•\-*"\s]+/, '').replace(/"\s*$/, '');
+        // Clean leading bullets or quotes if any from the entire block
+        let cleaned = generated.replace(/^[•\-*"\s]+/gm, '').replace(/"\s*$/gm, '');
         // Apply proper-noun capitalisation
         for (const [pattern, replacement] of PROPER_NOUNS) {
           cleaned = cleaned.replace(pattern, replacement);
@@ -195,6 +212,41 @@ Raw status: "${text}"`;
     const msgLower = msg.toLowerCase();
     const stage = sessionData.stage;
 
+    const intercepts: Record<string, { prompt: string; stage: string }> = {
+      'worked on bug fixes': {
+        prompt: 'Could you please provide the bug number or a brief description, and the project name?',
+        stage: 'WAITING_FOR_BUG_DETAILS'
+      },
+      'design ux': {
+        prompt: 'Could you please provide a brief description of the UX design, and the project name?',
+        stage: 'WAITING_FOR_DESIGN_DETAILS'
+      },
+      'client presentation': {
+        prompt: 'Could you please provide the client name or presentation topic, and the project name?',
+        stage: 'WAITING_FOR_CLIENT_DETAILS'
+      },
+      'developed a new feature': {
+        prompt: 'Could you please provide a brief description of the feature, and the project name?',
+        stage: 'WAITING_FOR_FEATURE_DETAILS'
+      },
+      'code review': {
+        prompt: 'Could you please provide details on what you reviewed, and the project name?',
+        stage: 'WAITING_FOR_REVIEW_DETAILS'
+      },
+      'testing & bug fixes': {
+        prompt: 'Could you please provide details on what was tested or fixed, and the project name?',
+        stage: 'WAITING_FOR_TESTING_DETAILS'
+      }
+    };
+
+    if ((stage === 'WAITING_FOR_WORK' || stage === 'WAITING_FOR_ANOTHER_TASK' || stage === 'WAITING_FOR_MORE_TASKS') && intercepts[msgLower]) {
+      return {
+        response: intercepts[msgLower].prompt,
+        nextStage: intercepts[msgLower].stage,
+        extractedData: {},
+      };
+    }
+
     try {
       // ── GREETING ──────────────────────────────────────────────
       if (stage === 'GREETING') {
@@ -215,10 +267,46 @@ Raw status: "${text}"`;
           };
         }
         const professional = await this.rephraseWork(msg);
+        const newLines = professional.split('\n').map(l => l.trim()).filter(Boolean);
+        const bulleted = newLines.map(l => `• ${l}`).join('\n');
         return {
           response: `Got it! ✅ Do you want to add more tasks for today? (yes / no)`,
           nextStage: 'WAITING_FOR_MORE_TASKS',
-          extractedData: { work: `• ${professional}` },
+          extractedData: { work: bulleted },
+        };
+      }
+
+      // ── DETAILS HANDLER (For predefined tasks) ────────────────
+      const detailsStages: Record<string, string> = {
+        'WAITING_FOR_BUG_DETAILS': 'Resolved bug:',
+        'WAITING_FOR_DESIGN_DETAILS': 'Designed UX for:',
+        'WAITING_FOR_CLIENT_DETAILS': 'Presented to client:',
+        'WAITING_FOR_FEATURE_DETAILS': 'Developed feature:',
+        'WAITING_FOR_REVIEW_DETAILS': 'Reviewed code for:',
+        'WAITING_FOR_TESTING_DETAILS': 'Tested and fixed bugs in:'
+      };
+
+      if (detailsStages[stage]) {
+        if (!msg || msg.length < 2) {
+          return {
+            response: `Please provide the details and the project name.`,
+            nextStage: stage,
+            extractedData: {},
+          };
+        }
+        
+        const prefix = detailsStages[stage];
+        const professional = await this.rephraseWork(`${prefix} ${msg}`);
+        const newLines = professional.split('\n').map(l => l.trim()).filter(Boolean);
+        const bulleted = newLines.map(l => `• ${l}`).join('\n');
+        
+        const existingWork = sessionData.work || '';
+        const updatedWork = existingWork ? `${existingWork}\n${bulleted}` : bulleted;
+
+        return {
+          response: `Got it! ✅ Do you want to add more tasks for today? (yes / no)`,
+          nextStage: 'WAITING_FOR_MORE_TASKS',
+          extractedData: { work: updatedWork },
         };
       }
 
@@ -238,8 +326,11 @@ Raw status: "${text}"`;
         // User typed a task directly
         if (!isNo && msg.length > 3 && !isYes) {
           const professional = await this.rephraseWork(msg);
+          const newLines = professional.split('\n').map(l => l.trim()).filter(Boolean);
+          const bulleted = newLines.map(l => `• ${l}`).join('\n');
+          
           const existingWork = sessionData.work || '';
-          const updatedWork = existingWork ? `${existingWork}\n• ${professional}` : `• ${professional}`;
+          const updatedWork = existingWork ? `${existingWork}\n${bulleted}` : bulleted;
           return {
             response: `Added! 📝 Do you have more tasks to add? (yes / no)`,
             nextStage: 'WAITING_FOR_MORE_TASKS',
@@ -265,8 +356,11 @@ Raw status: "${text}"`;
           };
         }
         const professional = await this.rephraseWork(msg);
+        const newLines = professional.split('\n').map(l => l.trim()).filter(Boolean);
+        const bulleted = newLines.map(l => `• ${l}`).join('\n');
+        
         const existingWork = sessionData.work || '';
-        const updatedWork = existingWork ? `${existingWork}\n• ${professional}` : `• ${professional}`;
+        const updatedWork = existingWork ? `${existingWork}\n${bulleted}` : bulleted;
 
         return {
           response: `Added! 📝 Do you want to add more tasks? (yes / no)`,

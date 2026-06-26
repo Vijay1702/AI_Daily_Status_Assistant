@@ -82,28 +82,38 @@ export class ChatController {
       try {
         const updatedSession = await standupSessionRepository.getToday(userId);
         if (updatedSession && updatedSession.work) {
-          // Create daily status (timesheet entry)
           const today = new Date();
           today.setHours(0, 0, 0, 0);
 
-          const entry = await dailyStatusRepository.create({
-            userId,
-            workDate: today,
-            statusText: this.formatStatusText(updatedSession),
-            aiSummary: updatedSession.work,
-            hours: updatedSession.hours || user.dailyHours,
-            workingFlag: true,
-          });
+          // Check if an entry already exists for today
+          const existingEntry = await dailyStatusRepository.findByUserIdAndDate(userId, today);
+
+          if (existingEntry) {
+            // Update/Amend existing entry
+            await dailyStatusRepository.update(existingEntry.id, {
+              statusText: this.formatStatusText(updatedSession),
+              aiSummary: updatedSession.work,
+              hours: updatedSession.hours || user.dailyHours,
+              workingFlag: true,
+            });
+            logger.info(`Timesheet amended for ${user.email} - Date: ${today.toISOString()}`);
+          } else {
+            // Create new entry
+            await dailyStatusRepository.create({
+              userId,
+              workDate: today,
+              statusText: this.formatStatusText(updatedSession),
+              aiSummary: updatedSession.work,
+              hours: updatedSession.hours || user.dailyHours,
+              workingFlag: true,
+            });
+            logger.info(`Timesheet created for ${user.email} - Date: ${today.toISOString()}`);
+          }
 
           entryCreated = true;
-          logger.info(`Timesheet created for ${user.email} - Date: ${today.toISOString()}`);
         }
       } catch (error: any) {
-        if (error.code === 'P2002') {
-          logger.warn('Timesheet already exists for today');
-        } else {
-          logger.error('Timesheet creation error:', error);
-        }
+        logger.error('Timesheet save error:', error);
       }
     }
 
@@ -175,7 +185,7 @@ export class ChatController {
     const session = await standupSessionRepository.getToday(userId);
     if (session) {
       await standupSessionRepository.update(session.id, {
-        stage: 'GREETING',
+        stage: 'WAITING_FOR_WORK',
         work: '',
         hours: null,
         blockers: '',
@@ -186,6 +196,15 @@ export class ChatController {
       const chatSession = await chatSessionRepository.findTodaySession(userId);
       if (chatSession) {
         await messageRepository.deleteBySessionId(chatSession.id);
+
+        // Pre-seed with new AI Greeting message
+        const user = await userRepository.findById(userId);
+        const userName = user?.name || 'there';
+        await messageRepository.create({
+          sessionId: chatSession.id,
+          role: 'assistant',
+          content: `Hey ${userName}! 👋 What did you work on today?`,
+        });
       }
 
       return res.json({

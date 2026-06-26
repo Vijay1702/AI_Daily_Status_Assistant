@@ -19,6 +19,8 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [stage, setStage] = useState('GREETING');
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -36,6 +38,7 @@ export default function ChatPage() {
         setLoadingHistory(true);
         const response = await apiClient.getChatSession();
         if (response.data.success && response.data.data) {
+          setStage(response.data.data.stage);
           // Session exists, we're ready for conversation
           if (response.data.data.history && response.data.data.history.length > 0) {
             setMessages(response.data.data.history.map((msg: any) => ({
@@ -55,26 +58,27 @@ export default function ChatPage() {
     loadSession();
   }, []);
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
+  const handleSendMessageWithText = async (text: string) => {
+    if (loading) return;
 
     setLoading(true);
-    const userMessage = input;
-    setInput('');
-
     try {
-      const response = await apiClient.sendChatMessage(userMessage);
+      // Add user message to conversation
+      const userMsg = {
+        id: Math.random().toString(),
+        role: 'user' as const,
+        content: text,
+        createdAt: new Date().toISOString(),
+      };
+
+      setMessages((prev) => [...prev, userMsg]);
+
+      const response = await apiClient.sendChatMessage(text);
       if (response.data.success && response.data.data) {
-        const { aiResponse } = response.data.data;
-        
-        // Add user message and AI response to conversation
-        const userMsg = {
-          id: Math.random().toString(),
-          role: 'user' as const,
-          content: userMessage,
-          createdAt: new Date().toISOString(),
-        };
+        const { aiResponse, stage: nextStage } = response.data.data;
+        if (nextStage) {
+          setStage(nextStage);
+        }
 
         const aiMsg = {
           id: Math.random().toString(),
@@ -83,7 +87,7 @@ export default function ChatPage() {
           createdAt: new Date().toISOString(),
         };
 
-        setMessages((prev) => [...prev, userMsg, aiMsg]);
+        setMessages((prev) => [...prev, aiMsg]);
       }
     } catch (error: any) {
       console.error('Error sending message:', error);
@@ -91,6 +95,15 @@ export default function ChatPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || loading) return;
+
+    const userMessage = input;
+    setInput('');
+    await handleSendMessageWithText(userMessage);
   };
 
   if (loadingHistory) {
@@ -121,26 +134,6 @@ export default function ChatPage() {
             </p>
           </div>
         </div>
-
-        {messages.length > 0 && (
-          <button
-            onClick={async () => {
-              if (window.confirm("Are you sure you want to reset today's standup session and start over? This will let you re-record your status.")) {
-                try {
-                  await apiClient.resetChatSession();
-                  setMessages([]);
-                } catch (err) {
-                  console.error("Failed to reset session:", err);
-                }
-              }
-            }}
-            className="flex items-center gap-xs px-md py-sm bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 text-white/85 hover:text-white text-body-sm font-medium rounded-xl transition-all duration-200"
-            title="Reset standup session for today"
-          >
-            <RotateCcw size={14} />
-            Start Over
-          </button>
-        )}
       </div>
 
       {/* Messages container */}
@@ -219,6 +212,63 @@ export default function ChatPage() {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Suggestion Chips */}
+      {!loading && (
+        <div className="flex flex-wrap items-center justify-center gap-xs mb-sm px-lg animate-in fade-in duration-300">
+          {(stage === 'WAITING_FOR_WORK' || stage === 'WAITING_FOR_ANOTHER_TASK') && (
+            <>
+              {['Worked on bug fixes', 'Design UX', 'Client presentation', 'Developed a new feature', 'Code review', 'Testing & bug fixes'].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => handleSendMessageWithText(suggestion)}
+                  className="px-4 py-1.5 bg-slate-800/60 hover:bg-slate-700/80 active:bg-slate-700 border border-white/10 text-white/85 hover:text-white text-body-sm font-medium rounded-full transition-all duration-150 cursor-pointer whitespace-nowrap shadow-sm hover:scale-105 active:scale-95"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </>
+          )}
+
+          {stage === 'WAITING_FOR_MORE_TASKS' && (
+            <>
+              {['Yes', 'No'].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => handleSendMessageWithText(suggestion)}
+                  className="px-4 py-1.5 bg-slate-800/60 hover:bg-slate-700/80 active:bg-slate-700 border border-white/10 text-white/85 hover:text-white text-body-sm font-medium rounded-full transition-all duration-150 cursor-pointer whitespace-nowrap shadow-sm hover:scale-105 active:scale-95"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </>
+          )}
+
+          {stage === 'WAITING_FOR_HOURS' && (
+            <>
+              {['8', '7', '6', '4'].map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => handleSendMessageWithText(suggestion)}
+                  className="px-4 py-1.5 bg-slate-800/60 hover:bg-slate-700/80 active:bg-slate-700 border border-white/10 text-white/85 hover:text-white text-body-sm font-medium rounded-full transition-all duration-150 cursor-pointer whitespace-nowrap shadow-sm hover:scale-105 active:scale-95"
+                >
+                  {suggestion} hours
+                </button>
+              ))}
+            </>
+          )}
+
+          {stage === 'COMPLETED' && (
+            <button
+              onClick={() => setShowConfirmModal(true)}
+              className="flex items-center gap-xs px-5 py-2 bg-slate-800/80 hover:bg-slate-700/80 border border-white/10 text-primary-400 font-semibold text-body-sm rounded-full transition-all hover:scale-105 active:scale-95 shadow-lg"
+            >
+              <RotateCcw size={13} />
+              Update the status
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Input form */}
       <div className="p-lg z-10 pb-xl">
         <div className="bg-slate-800/40 backdrop-blur-2xl max-w-4xl mx-auto rounded-3xl p-sm shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/10 transition-all focus-within:border-primary-500/50 focus-within:bg-slate-800/60">
@@ -261,6 +311,60 @@ export default function ChatPage() {
           </p>
         </div>
       </div>
+
+      {/* Custom Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 bg-[#020617]/75 backdrop-blur-md flex items-center justify-center z-50 p-md animate-in fade-in duration-200">
+          <div className="bg-slate-900/90 border border-white/10 p-lg rounded-3xl max-w-sm w-full shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 bg-primary-500/20 rounded-full flex items-center justify-center text-primary-400 mb-md border border-primary-500/30">
+              <RotateCcw size={22} className="animate-pulse" />
+            </div>
+            <h3 className="text-title-lg font-semibold text-white font-inter mb-sm">
+              Update Today's Status?
+            </h3>
+            <p className="text-body-md text-white/60 font-inter mb-lg leading-relaxed">
+              Are you sure you want to update today's status? This will reset the conversation and let you re-record your standup.
+            </p>
+            <div className="flex gap-sm w-full">
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="flex-1 px-md py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 hover:text-white font-medium text-body-sm rounded-xl transition-all duration-150 active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setShowConfirmModal(false);
+                  try {
+                    await apiClient.resetChatSession();
+                    // Re-fetch the session to display the new seeded greeting immediately
+                    const response = await apiClient.getChatSession();
+                    if (response.data.success && response.data.data) {
+                      setStage(response.data.data.stage);
+                      if (response.data.data.history) {
+                        setMessages(response.data.data.history.map((msg: any) => ({
+                          id: msg.id,
+                          role: msg.role as 'user' | 'assistant',
+                          content: msg.content,
+                          createdAt: msg.createdAt,
+                        })));
+                      }
+                    } else {
+                      setMessages([]);
+                      setStage('GREETING');
+                    }
+                  } catch (err) {
+                    console.error("Failed to reset session:", err);
+                  }
+                }}
+                className="flex-1 px-md py-2.5 bg-gradient-to-br from-primary-500 to-indigo-600 hover:from-primary-400 hover:to-indigo-500 text-white font-semibold text-body-sm rounded-xl shadow-lg shadow-primary-500/20 transition-all duration-150 hover:scale-105 active:scale-95"
+              >
+                Update
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
