@@ -56,6 +56,8 @@ export function scheduleReminderJob() {
     } catch (error) {
       logger.error('Error in reminder job:', error);
     }
+  }, {
+    timezone: "Asia/Kolkata"
   });
 
   logger.info('Reminder job scheduled for daily execution at 6 PM');
